@@ -1,14 +1,20 @@
-MI ORQUIDEARIO — PWA
+MI ORQUIDEARIO V2 IA
 
-Contenido:
+Archivos principales:
 - index.html
 - manifest.webmanifest
 - sw.js
-- icons/
+- icon-192.png
+- icon-512.png
+- api/identify.js
 
-Para instalarla en Android como app:
-1. Publicar esta carpeta en un hosting HTTPS (por ejemplo Vercel o GitHub Pages).
-2. Abrir la dirección en Chrome.
-3. Pulsar “Instalar app” o menú ⋮ > “Instalar aplicación”.
+NUEVO:
+- Identificación probable de orquídeas por fotografía.
+- Análisis visual orientativo de hojas, raíces y tejidos.
+- La identificación se confirma manualmente antes de guardarse.
 
-Una vez instalada, funciona a pantalla completa y mantiene soporte offline.
+PARA ACTIVAR LA IA:
+En Vercel, agrega la variable de entorno OPENAI_API_KEY al proyecto.
+La clave nunca debe colocarse dentro de index.html ni subirse a GitHub.
+
+Después de configurar la variable, haz un nuevo despliegue.

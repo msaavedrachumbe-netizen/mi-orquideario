@@ -1,71 +1,94 @@
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Método no permitido.' });
+    return res.status(405).json({ error: 'Método no permitido' });
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.PLANTNET_API_KEY;
+
   if (!apiKey) {
     return res.status(503).json({
-      error: 'La IA todavía no está activada: falta configurar OPENAI_API_KEY en Vercel.'
+      error: 'Falta configurar PLANTNET_API_KEY'
     });
   }
 
-  const { image, mode = 'identify', species = 'Otra', notes = '' } = req.body || {};
-  if (!image || typeof image !== 'string' || !image.startsWith('data:image/')) {
-    return res.status(400).json({ error: 'Falta una imagen válida.' });
-  }
+  const { image } = req.body || {};
 
-  const prompt = mode === 'health'
-    ? `Analiza visualmente esta orquídea con prudencia. Tipo registrado: ${species}. Notas del usuario: ${notes || 'ninguna'}.
-Devuelve SOLO JSON válido con esta forma:
-{"summary":"...","possible_issues":["..."],"suggested_actions":["..."],"confidence":0}
-No diagnostiques enfermedades con certeza. Describe solo signos visibles y formula problemas como posibilidades. confidence debe ser entero 0-100.`
-    : `Identifica esta orquídea con prudencia. Prioriza el género o grupo hortícola; no inventes especie/cultivar si la imagen no permite distinguirlo.
-Devuelve SOLO JSON válido con esta forma:
-{"likely_name":"...","type":"Phalaenopsis|Cattleya|Oncidium|Dendrobium|Dracula|Paphiopedilum|Otra","confidence":0,"reason":"...","visible_notes":"..."}
-confidence debe ser entero 0-100. Si es un híbrido o no se puede precisar, dilo claramente.`;
+  if (!image || typeof image !== 'string') {
+    return res.status(400).json({
+      error: 'Falta una imagen válida'
+    });
+  }
 
   try {
-    const r = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'gpt-5.6-luna',
-        input: [{
-          role: 'user',
-          content: [
-            { type: 'input_text', text: prompt },
-            { type: 'input_image', image_url: image }
-          ]
-        }],
-        max_output_tokens: 600
-      })
+    const match = image.match(
+      /^data:(image\/(?:jpeg|jpg|png));base64,(.+)$/
+    );
+
+    if (!match) {
+      return res.status(400).json({
+        error: 'Formato de imagen no compatible'
+      });
+    }
+
+    const mimeType =
+      match[1] === 'image/jpg' ? 'image/jpeg' : match[1];
+
+    const buffer = Buffer.from(match[2], 'base64');
+
+    const form = new FormData();
+
+    const blob = new Blob([buffer], {
+      type: mimeType
     });
 
-    const raw = await r.json();
-    if (!r.ok) {
-      console.error(raw);
-      return res.status(502).json({ error: 'El servicio de IA no respondió correctamente.' });
+    form.append(
+      'images',
+      blob,
+      mimeType === 'image/png' ? 'orquidea.png' : 'orquidea.jpg'
+    );
+
+    form.append('organs', 'auto');
+
+    const url =
+      `https://my-api.plantnet.org/v2/identify/all` +
+      `?api-key=${encodeURIComponent(apiKey)}` +
+      `&lang=es` +
+      `&nb-results=5`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      body: form
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error('PlantNet error:', data);
+
+      return res.status(502).json({
+        error:
+          data?.message ||
+          data?.error ||
+          'Pl@ntNet no respondió correctamente'
+      });
     }
 
-    const text = raw.output_text ||
-      (raw.output || []).flatMap(x => x.content || []).find(x => x.type === 'output_text')?.text ||
-      '';
+    const results = (data.results || []).slice(0, 5).map((r) => ({
+      score: Math.round((r.score || 0) * 100),
+      scientificName:
+        r.species?.scientificNameWithoutAuthor ||
+        r.species?.scientificName ||
+        '',
+      commonNames: r.species?.commonNames || [],
+      genus:
+        r.species?.genus?.scientificNameWithoutAuthor ||
+        r.species?.genus?.scientificName ||
+        '',
+      family:
+        r.species?.family?.scientificNameWithoutAuthor ||
+        r.species?.family?.scientificName ||
+        ''
+    }));
 
-    const cleaned = String(text).replace(/^```json\s*/i, '').replace(/```$/,'').trim();
-    let parsed;
-    try {
-      parsed = JSON.parse(cleaned);
-    } catch {
-      return res.status(502).json({ error: 'La IA respondió, pero el resultado no pudo interpretarse.' });
-    }
-
-    return res.status(200).json(parsed);
-  } catch (e) {
-    console.error(e);
-    return res.status(500).json({ error: 'Error al analizar la imagen.' });
-  }
-}
+    if (!results.length) {
+      return res.status

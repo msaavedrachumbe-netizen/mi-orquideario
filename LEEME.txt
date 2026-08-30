@@ -1,20 +1,22 @@
-MI ORQUIDEARIO V2 IA
+MI ORQUIDEARIO — VERSIÓN PL@NTNET
 
-Archivos principales:
+Sube/reemplaza en GitHub:
 - index.html
 - manifest.webmanifest
 - sw.js
 - icon-192.png
 - icon-512.png
 - api/identify.js
+- api/identificar.js
 
-NUEVO:
-- Identificación probable de orquídeas por fotografía.
-- Análisis visual orientativo de hojas, raíces y tejidos.
-- La identificación se confirma manualmente antes de guardarse.
+En Vercel debe existir:
+PLANTNET_API_KEY = tu clave privada de Pl@ntNet
 
-PARA ACTIVAR LA IA:
-En Vercel, agrega la variable de entorno OPENAI_API_KEY al proyecto.
-La clave nunca debe colocarse dentro de index.html ni subirse a GitHub.
+No pongas la clave en GitHub ni dentro de index.html.
 
-Después de configurar la variable, haz un nuevo despliegue.
+Después espera que Vercel muestre Ready y prueba:
++ Añadir → seleccionar foto → “Identificar con Pl@ntNet”.
+
+La identificación de híbridos de orquídeas puede ser aproximada.
+
+Revisión técnica: cache PWA actualizado para evitar que quede cargada una versión anterior tras un despliegue. Las llamadas /api no se almacenan en caché.

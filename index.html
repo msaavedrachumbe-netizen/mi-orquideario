@@ -50,12 +50,12 @@
   .check input{width:auto;margin-top:2px}
   @media(max-width:600px){.checkgrid{grid-template-columns:1fr}}
 
-.ai-box{margin-top:10px;padding:11px;border:1px solid var(--border);border-radius:13px;background:#f7faf5}
-.ai-result{margin-top:9px;padding:10px;border-radius:11px;background:white;border:1px solid var(--border);font-size:13px;display:none}
-.ai-result h4{margin:0 0 6px;font-size:14px}
-.ai-meta{font-size:12px;color:var(--muted);margin-top:4px}
-.ai-actions{display:flex;gap:8px;margin-top:9px}
-.ai-actions button{font-size:12px;padding:8px}
+  .identify-box{margin-top:10px;padding:11px;border:1px solid var(--border);border-radius:13px;background:#f7faf5}
+  .identify-result{margin-top:9px;padding:10px;border-radius:11px;background:white;border:1px solid var(--border);font-size:13px;display:none}
+  .identify-result h4{margin:0 0 6px;font-size:14px}
+  .identify-meta{font-size:12px;color:var(--muted);margin-top:5px}
+  .identify-actions{display:flex;gap:8px;margin-top:9px}
+  .identify-actions button{font-size:12px;padding:8px}
 
 </style>
 
@@ -104,12 +104,11 @@
       <label>Foto</label>
       <input id="photo" type="file" accept="image/*"/>
       <img id="photoPreview" class="preview" alt="Vista previa"/>
-      <div class="ai-box">
-        <button type="button" class="secondary" id="identifyAI">✨ Identificar con IA</button>
-        <div class="ai-meta">Sube primero una foto clara de la planta. La identificación puede ser aproximada, especialmente en híbridos.</div>
-        <div id="aiIdentifyResult" class="ai-result"></div>
+      <div class="identify-box">
+        <button type="button" class="secondary" id="identifyPlant">🌿 Identificar con Pl@ntNet</button>
+        <div class="identify-meta">Sube una foto clara. Si hay flor, mejor. En híbridos de orquídeas la identificación puede ser aproximada. Identificación de especies basada en Pl@ntNet.</div>
+        <div id="identifyResult" class="identify-result"></div>
       </div>
-
     </div>
     <div class="grid">
       <div class="field"><label>Nombre / código</label><input id="name" required placeholder="Ej. Cattleya 03"/></div>
@@ -165,10 +164,9 @@
     <div id="healthResult" class="health-result" style="display:none"></div>
     <div class="modal-actions">
       <button type="button" class="secondary" id="healthCancel">Cerrar</button>
-      <button type="button" class="secondary" id="analyzeHealthAI">✨ Analizar foto con IA</button>
       <button type="button" class="primary" id="analyzeHealth">Analizar síntomas</button>
     </div>
-    <div class="tip">La revisión es orientativa. La IA analiza solo lo visible en la foto y no sustituye una identificación botánica o diagnóstico especializado.</div>
+    <div class="tip">Esta revisión es orientativa. La foto queda guardada en el historial; la evaluación se basa en los síntomas que marques.</div>
   </form>
 </dialog>
 
@@ -261,11 +259,12 @@ window.editPlant=id=>{
   $('dialogTitle').textContent='Editar orquídea'; $('editId').value=p.id; pendingPhoto=p.photo||null;
   ['name','species','location','status','lastWater','waterEvery','lastFertilizer','lastRepot','substrate','roots','notes'].forEach(k=>$(k).value=p[k]??'');
   if(p.photo){$('photoPreview').src=p.photo;$('photoPreview').style.display='block'} else {$('photoPreview').style.display='none'}
+  $('identifyResult').style.display='none';$('identifyResult').innerHTML='';
   $('plantDialog').showModal();
 };
 
 $('addBtn').onclick=()=>{
-  $('dialogTitle').textContent='Nueva orquídea';$('plantForm').reset();$('editId').value='';pendingPhoto=null;$('photoPreview').style.display='none'; if($('aiIdentifyResult')){$('aiIdentifyResult').style.display='none';$('aiIdentifyResult').innerHTML='';} lastAIIdentification=null;
+  $('dialogTitle').textContent='Nueva orquídea';$('plantForm').reset();$('editId').value='';pendingPhoto=null;$('photoPreview').style.display='none';$('identifyResult').style.display='none';$('identifyResult').innerHTML='';
   $('species').value='Phalaenopsis';$('waterEvery').value=CARE.Phalaenopsis.days;$('status').value='Bien';$('roots').value='Sanas';$('plantDialog').showModal();
 };
 
@@ -278,16 +277,112 @@ $('photo').addEventListener('change',()=>{
   reader.onload=e=>{
     const img=new Image();
     img.onload=()=>{
-      const max=900,scale=Math.min(1,max/Math.max(img.width,img.height));
+      const max=1200,scale=Math.min(1,max/Math.max(img.width,img.height));
       const c=document.createElement('canvas');c.width=Math.round(img.width*scale);c.height=Math.round(img.height*scale);
       c.getContext('2d').drawImage(img,0,0,c.width,c.height);
-      pendingPhoto=c.toDataURL('image/jpeg',0.78);
+      pendingPhoto=c.toDataURL('image/jpeg',0.85);
       $('photoPreview').src=pendingPhoto;$('photoPreview').style.display='block';
     };
     img.src=e.target.result;
   };
   reader.readAsDataURL(file);
 });
+
+
+function orchidTypeFromGenus(genus){
+  const g=String(genus||'').trim().toLowerCase();
+  const map={
+    'phalaenopsis':'Phalaenopsis',
+    'cattleya':'Cattleya',
+    'oncidium':'Oncidium',
+    'dendrobium':'Dendrobium',
+    'dracula':'Dracula',
+    'paphiopedilum':'Paphiopedilum'
+  };
+  return map[g] || 'Otra';
+}
+
+function confidenceLabel(v){
+  const n=Number(v||0);
+  if(n>=80)return 'Alta';
+  if(n>=50)return 'Media';
+  return 'Baja';
+}
+
+$('identifyPlant').onclick=async()=>{
+  const box=$('identifyResult');
+  box.style.display='block';
+
+  if(!pendingPhoto){
+    box.innerHTML='<b>📷 Primero selecciona una foto.</b>';
+    return;
+  }
+
+  $('identifyPlant').disabled=true;
+  $('identifyPlant').textContent='Analizando…';
+  box.innerHTML='🌿 Consultando Pl@ntNet…';
+
+  try{
+    const r=await fetch('/api/identify',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({image:pendingPhoto})
+    });
+
+    let d={};
+    try{ d=await r.json(); }catch(_){}
+
+    if(!r.ok) throw new Error(d.error||'No se pudo completar la identificación.');
+
+    if(!d.identified){
+      box.innerHTML=`<b>⚠️ ${esc(d.message||'No se pudo identificar con suficiente claridad.')}</b>`;
+      return;
+    }
+
+    const scientific=d.scientificName||d.name||'No determinada';
+    const common=(Array.isArray(d.commonNames)&&d.commonNames[0]) ? d.commonNames[0] : '';
+    const conf=Number(d.confidence||0);
+    const type=orchidTypeFromGenus(d.genus);
+
+    const alts=Array.isArray(d.alternatives)?d.alternatives:[];
+    const alternativesHtml=alts.slice(1,5).map(a=>
+      `<li>${esc(a.scientificName||'')} — ${Number(a.score||0)}%</li>`
+    ).join('');
+
+    box.innerHTML=`
+      <h4>🌿 Identificación probable</h4>
+      <b>${esc(scientific)}</b>
+      ${common?`<div>${esc(common)}</div>`:''}
+      <div class="identify-meta">
+        Género: ${esc(d.genus||'—')} · Familia: ${esc(d.family||'—')}<br>
+        Confianza: ${confidenceLabel(conf)} (${conf}%)
+        ${d.remaining!==null && d.remaining!==undefined ? ` · Consultas gratis restantes hoy: ${esc(d.remaining)}` : ''}
+      </div>
+      ${alternativesHtml?`<div class="identify-meta"><b>Otras posibilidades:</b><ul>${alternativesHtml}</ul></div>`:''}
+      <div class="identify-actions">
+        <button type="button" class="primary" id="usePlantNet">Usar identificación</button>
+      </div>`;
+
+    const use=$('usePlantNet');
+    if(use){
+      use.onclick=()=>{
+        $('species').value=type;
+        if(!$('name').value.trim()) $('name').value=scientific;
+        const note=`Pl@ntNet: ${scientific} (${conf}% de confianza).`;
+        const current=$('notes').value.trim();
+        $('notes').value=[current,note].filter(Boolean).join('\n');
+        box.innerHTML += '<div class="identify-meta">✅ Aplicado a la ficha. Puedes corregirlo antes de guardar.</div>';
+      };
+    }
+
+  }catch(e){
+    box.innerHTML=`<b>⚠️ ${esc(e.message)}</b>`;
+  }finally{
+    $('identifyPlant').disabled=false;
+    $('identifyPlant').textContent='🌿 Identificar con Pl@ntNet';
+  }
+};
+
 
 $('plantForm').addEventListener('submit',e=>{
   e.preventDefault();
@@ -331,7 +426,7 @@ $('healthPhoto').addEventListener('change',()=>{
   reader.onload=e=>{
     const img=new Image();
     img.onload=()=>{
-      const max=900,scale=Math.min(1,max/Math.max(img.width,img.height));
+      const max=1200,scale=Math.min(1,max/Math.max(img.width,img.height));
       const c=document.createElement('canvas');
       c.width=Math.round(img.width*scale); c.height=Math.round(img.height*scale);
       c.getContext('2d').drawImage(img,0,0,c.width,c.height);
@@ -343,120 +438,6 @@ $('healthPhoto').addEventListener('change',()=>{
   };
   reader.readAsDataURL(file);
 });
-
-
-let lastAIIdentification=null;
-
-async function callAI(imageData, mode, extra={}){
-  if(!imageData) throw new Error('Primero toma o sube una foto.');
-  const r=await fetch('/api/identify',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({image:imageData,mode,...extra})
-  });
-  let data={};
-  try{ data=await r.json(); }catch(e){}
-  if(!r.ok) throw new Error(data.error||'No se pudo completar el análisis.');
-  return data;
-}
-
-function confidenceLabel(v){
-  const n=Number(v||0);
-  if(n>=85)return 'Alta';
-  if(n>=60)return 'Media';
-  return 'Baja';
-}
-
-$('identifyAI').onclick=async()=>{
-  const box=$('aiIdentifyResult');
-  if(!pendingPhoto){
-    box.style.display='block';
-    box.innerHTML='<b>📷 Primero agrega una foto.</b>';
-    return;
-  }
-  $('identifyAI').disabled=true;
-  $('identifyAI').textContent='Analizando…';
-  box.style.display='block';
-  box.innerHTML='🌿 Observando la planta…';
-  try{
-    const d=await callAI(pendingPhoto,'identify');
-    lastAIIdentification=d;
-    const likely=d.likely_name||'No determinada';
-    const type=d.type||'Otra';
-    const conf=Number(d.confidence||0);
-    box.innerHTML=`
-      <h4>✨ Identificación probable</h4>
-      <b>${esc(likely)}</b>
-      <div class="ai-meta">Tipo: ${esc(type)} · Confianza: ${confidenceLabel(conf)} (${conf}%)</div>
-      <div style="margin-top:6px">${esc(d.reason||'')}</div>
-      ${d.visible_notes?`<div style="margin-top:6px"><b>Lo que se observa:</b> ${esc(d.visible_notes)}</div>`:''}
-      <div class="ai-actions">
-        <button type="button" class="primary" id="acceptAI">Usar identificación</button>
-      </div>`;
-    const accept=$('acceptAI');
-    if(accept) accept.onclick=()=>{
-      const allowed=['Phalaenopsis','Cattleya','Oncidium','Dendrobium','Dracula','Paphiopedilum','Otra'];
-      $('species').value=allowed.includes(type)?type:'Otra';
-      if(!$('name').value.trim() && likely && likely!=='No determinada') $('name').value=likely;
-      const note=`IA: ${likely} (${conf}% de confianza). ${d.reason||''}`.trim();
-      $('notes').value=[$('notes').value.trim(),note].filter(Boolean).join('\n');
-      box.innerHTML += '<div class="ai-meta">✅ Resultado aplicado a la ficha. Puedes corregirlo antes de guardar.</div>';
-    };
-  }catch(e){
-    box.innerHTML=`<b>⚠️ ${esc(e.message)}</b>`;
-  }finally{
-    $('identifyAI').disabled=false;
-    $('identifyAI').textContent='✨ Identificar con IA';
-  }
-};
-
-$('analyzeHealthAI').onclick=async()=>{
-  const box=$('healthResult');
-  box.style.display='block';
-  if(!healthPhotoData){
-    box.innerHTML='<b>📷 Primero agrega una foto para analizar.</b>';
-    return;
-  }
-  $('analyzeHealthAI').disabled=true;
-  $('analyzeHealthAI').textContent='Analizando…';
-  box.innerHTML='🔎 Revisando raíces, hojas y tejidos visibles…';
-  try{
-    const id=$('healthPlantId').value;
-    const p=plants.find(x=>x.id===id);
-    const d=await callAI(healthPhotoData,'health',{
-      species:p?.species||'Otra',
-      notes:$('healthNotes').value.trim()
-    });
-    const issues=Array.isArray(d.possible_issues)?d.possible_issues:[];
-    const actions=Array.isArray(d.suggested_actions)?d.suggested_actions:[];
-    box.innerHTML=`
-      <strong>✨ Revisión visual con IA</strong>
-      ${d.summary?`<div>${esc(d.summary)}</div>`:''}
-      ${issues.length?`<div style="margin-top:7px"><b>Posibles hallazgos:</b> ${issues.map(esc).join(' · ')}</div>`:''}
-      ${actions.length?`<div style="margin-top:7px"><b>Qué revisar/hacer:</b> ${actions.map(esc).join(' · ')}</div>`:''}
-      <div class="ai-meta">Confianza visual: ${confidenceLabel(d.confidence||0)} (${Number(d.confidence||0)}%). No confirma enfermedades ni especies exactas.</div>`;
-    if(p){
-      p.healthHistory=p.healthHistory||[];
-      p.healthHistory.unshift({
-        date:new Date().toISOString(),
-        source:'IA',
-        summary:d.summary||'Revisión visual con IA',
-        issues,
-        actions,
-        confidence:Number(d.confidence||0),
-        notes:$('healthNotes').value.trim(),
-        photo:healthPhotoData
-      });
-      save();
-    }
-  }catch(e){
-    box.innerHTML=`<b>⚠️ ${esc(e.message)}</b>`;
-  }finally{
-    $('analyzeHealthAI').disabled=false;
-    $('analyzeHealthAI').textContent='✨ Analizar foto con IA';
-  }
-};
-
 
 function healthAdvice(vals, species){
   let issues=[], actions=[];
@@ -614,7 +595,7 @@ window.addEventListener('appinstalled',()=>{
   if(b) b.style.display='none';
 });
 if('serviceWorker' in navigator){
-  window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+  window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js?v=plantnet3',{updateViaCache:'none'}).catch(()=>{}));
 }
 
 </script>

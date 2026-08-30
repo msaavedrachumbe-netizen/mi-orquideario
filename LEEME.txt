@@ -1,0 +1,14 @@
+MI ORQUIDEARIO — PWA
+
+Contenido:
+- index.html
+- manifest.webmanifest
+- sw.js
+- icons/
+
+Para instalarla en Android como app:
+1. Publicar esta carpeta en un hosting HTTPS (por ejemplo Vercel o GitHub Pages).
+2. Abrir la dirección en Chrome.
+3. Pulsar “Instalar app” o menú ⋮ > “Instalar aplicación”.
+
+Una vez instalada, funciona a pantalla completa y mantiene soporte offline.
